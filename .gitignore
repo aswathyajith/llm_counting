@@ -1,0 +1,9 @@
+results/*
+data/*
+prompts/*
+results/*
+slurm_jobs/*
+notebooks/*
+.pre-commit-config.yaml
+src.egg-info/*
+*pycache*
