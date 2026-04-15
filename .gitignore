@@ -7,3 +7,4 @@ notebooks/*
 .pre-commit-config.yaml
 src.egg-info/*
 *pycache*
+dictionaries/EN-words.dic
