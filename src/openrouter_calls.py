@@ -27,8 +27,7 @@ import argparse
 import importlib
 import json
 import os
-import urllib.error
-import urllib.request
+import requests
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -46,6 +45,7 @@ _CONFIG_KEYS = frozenset(
         "extra",
         "prompt",
         "system",
+        "reasoning",
     }
 )
 
@@ -79,48 +79,33 @@ def chat_completion(
     api_key: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
-    site_url: str | None = None,
-    app_name: str | None = None,
+    reasoning: dict[str, Any] | None = None,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """POST /chat/completions; returns parsed JSON (raises on HTTP errors)."""
-    key = api_key or os.environ.get("OPENROUTER_API_KEY")
-    if not key:
-        raise ValueError("Set OPENROUTER_API_KEY or pass api_key=")
-
-    body: dict[str, Any] = {"model": model, "messages": list(messages)}
+    payload: dict[str, Any] = {"model": model, "messages": list(messages)}
     if temperature is not None:
-        body["temperature"] = temperature
+        payload["temperature"] = temperature
     if max_tokens is not None:
-        body["max_tokens"] = max_tokens
+        payload["max_tokens"] = max_tokens
     if extra:
-        body.update(dict(extra))
+        payload.update(dict(extra))
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+    if api_key is None:
+        api_key = os.environ.get("OPENROUTER_API_KEY")
 
-    data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        OPENROUTER_CHAT_URL,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    )
-    if site_url:
-        req.add_header("HTTP-Referer", site_url)
-    if app_name:
-        req.add_header("X-Title", app_name)
-
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenRouter HTTP {e.code}: {err_body}") from e
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    response = requests.post(OPENROUTER_CHAT_URL, headers=headers, json=payload)
+    return response.json()
 
 
 def assistant_text(response: Mapping[str, Any]) -> str:
     """First message content string from a chat completion response."""
+    print(response)
     choice = response["choices"][0]
     msg = choice["message"]
     return msg["content"]
@@ -212,11 +197,16 @@ if __name__ == "__main__":
     out = chat_completion(
         model=str(model),
         messages=msgs,
-        api_key=(str(merged["api_key"]) if merged.get("api_key") else None),
+        api_key=(
+            str(merged["api_key"])
+            if merged.get("api_key")
+            else os.environ.get("OPENROUTER_API_KEY")
+        ),
         temperature=merged.get("temperature"),
         max_tokens=merged.get("max_tokens"),
         site_url=merged.get("site_url"),
         app_name=merged.get("app_name"),
+        reasoning=merged.get("reasoning"),
         extra=extra,
     )
     print(assistant_text(out))

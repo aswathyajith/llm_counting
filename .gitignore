@@ -1,10 +1,14 @@
 results/*
 data/*
 prompts/*
-results/*
+results*
 slurm_jobs/*
 notebooks/*
 .pre-commit-config.yaml
 src.egg-info/*
 *pycache*
 dictionaries/EN-words.dic
+job_logs/*
+model_responses/*
+plots/*
+tmp/*

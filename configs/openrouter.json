@@ -1,5 +1,8 @@
 {
-  "model": "openai/gpt-4o-mini",
-  "temperature": 0.2,
-  "prompt": "Say hello."
+  "model": "openai/o3-mini",
+  "temperature": 0,
+  "reasoning": {
+    "effort": "low"
+  },
+  "prompt": "Count the number of times the word 'cat' appears in the following text: 'The cat in the hat sat on the mat. Cats love to play with toys. My little cat is named Whiskers.'."
 }

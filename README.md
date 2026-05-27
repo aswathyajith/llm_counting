@@ -84,21 +84,6 @@ The system generates four distinct entity types designed to test different aspec
    - Preserves word structure while removing semantic meaning
    - Uses same source nouns as noun dataset for direct comparison
 
-### Key Features
-
-- **Length Distribution Matching**: All entity types use identical length distributions for fair comparison
-- **Reproducible Generation**: Comprehensive seeding ensures consistent results across runs
-- **Batch Processing**: `--generate-all` flag creates all 4 types simultaneously
-- **Quality Filtering**: Advanced filtering removes real words, proper nouns, and compounds
-
-### Implementation Highlights
-
-**Recent Improvements (2025):**
-- ✅ **Code Optimization**: Reduced codebase from 706 to 268 lines (62% reduction)
-- ✅ **Cipher Noun System**: Added alphabet substitution cipher for encrypted semantic content
-- ✅ **Batch Generation**: Single command generates all 4 entity types with matching distributions
-- ✅ **Enhanced Filtering**: Comprehensive real-word detection using full WordNet corpus
-- ✅ **Length Normalization**: Ensures comparable length distributions across all entity types
 
 **Example Usage:**
 ```bash

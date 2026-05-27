@@ -5,6 +5,7 @@ import os
 import json
 import argparse
 import random
+import pandas as pd
 from typing import List
 
 try:
@@ -330,7 +331,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_path",
         type=str,
-        default="data/entities.v1.jsonl",
+        default="data/matched_entities.c100.l15.jsonl",
         help="Output file path",
     )
     parser.add_argument(
@@ -364,6 +365,11 @@ if __name__ == "__main__":
             print(
                 f"  {entity_type.capitalize()}: min={min(lengths)}, max={max(lengths)}, mean={sum(lengths)/len(lengths):.2f}"
             )
+
+        # save the all_entities to a json file as dataframe
+        all_entities_df = pd.DataFrame(all_entities)
+        all_entities_df.to_json(args.save_path, orient="records", lines=True)
+        print(f"Saved all entities to {args.save_path}")
     else:
         entities = generator.generate(args.length, args.count, args.type, args.seed)
         generator.save_to_disk(args.save_path)
