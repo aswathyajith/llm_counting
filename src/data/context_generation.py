@@ -147,6 +147,12 @@ def get_wiki_contexts(nouns_df: pd.DataFrame) -> pd.DataFrame:
     return wiki_nouns_df
 
 
+def replace_target(context, target_string, replacement_string):
+    tgtmatcher = TargetMatcher(target_string, context)
+    tgtmatcher.set_regex(case=0, space=0, standalone=0)
+    return tgtmatcher.replace_matches(replacement_string)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Context Generation")
     parser.add_argument(
@@ -167,6 +173,14 @@ if __name__ == "__main__":
         default="wiki",
         help="Source of the context (wiki, news, social media, etc.)",
     )
+    parser.add_argument(
+        "--cipher_swap_rates",
+        type=float,
+        nargs="+",
+        default=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+        help="Swap rates for cipher ablation (space-separated list)",
+    )
+
     args = parser.parse_args()
 
     dataset = pd.read_json(args.target_words_file, lines=True)
@@ -174,31 +188,61 @@ if __name__ == "__main__":
 
     wiki_nouns_df = get_wiki_contexts(dataset)
     wiki_nouns_df = wiki_nouns_df.apply(lambda row: get_mentions(row), axis=1)
-    os.makedirs(output_dir, exist_ok=True)
-    wiki_nouns_df.to_json(
-        os.path.join(output_dir, "contexts_wiki.jsonl"), orient="records", lines=True
-    )
 
-    # Perform cipher ablation on the context
+    # Perform cipher ablation on the context with different swap rates
+    for cipher_swap_rate in args.cipher_swap_rates:
+        wiki_nouns_df = context_ablation(
+            wiki_nouns_df,
+            "noun_context",
+            f"cipher_ablation_rate_{cipher_swap_rate}",
+            "cipher",
+            cipher_swap_rate,
+        )
+
+    wiki_nouns_df["reverse_noun"] = wiki_nouns_df["noun"].apply(lambda x: x[::-1])
     wiki_nouns_df = context_ablation(
-        wiki_nouns_df, "noun_context", "ablated_cipher_context", "cipher"
+        wiki_nouns_df, "noun_context", "reverse_ablation", "reverse"
     )
 
-    # replace cipher target string with original target string in the ablated context
+    # Change all target instances to ciphered version
+    for cipher_swap_rate in args.cipher_swap_rates:
+        wiki_nouns_df[f"cipher_ablation_rate_{cipher_swap_rate}_target_cipher"] = (
+            wiki_nouns_df.apply(
+                lambda row: replace_target(
+                    row[f"cipher_ablation_rate_{cipher_swap_rate}"],
+                    row["noun"],
+                    row["cipher"],
+                ),
+                axis=1,
+            )
+        )
 
-    # replace substring function
+    # Change all target instances to original version
 
-    def replace_target(context, target_string, replacement_string):
-        tgtmatcher = TargetMatcher(target_string, context)
-        tgtmatcher.set_regex(case=0, space=0, standalone=0)
-        return tgtmatcher.replace_matches(replacement_string)
+    for cipher_swap_rate in args.cipher_swap_rates:
+        wiki_nouns_df[f"cipher_ablation_rate_{cipher_swap_rate}_target_noun"] = (
+            wiki_nouns_df.apply(
+                lambda row: replace_target(
+                    row[f"cipher_ablation_rate_{cipher_swap_rate}"],
+                    row["cipher"],
+                    row["noun"],
+                ),
+                axis=1,
+            )
+        )
 
-    wiki_nouns_df["ablated_cipher_context_tgt_noun"] = wiki_nouns_df.apply(
+    # Replacing reverse target string with original target string in the reverse-ablated contexts
+    wiki_nouns_df["reverse_ablation"] = wiki_nouns_df.apply(
         lambda row: replace_target(
-            row["ablated_cipher_context"], row["cipher"], row["noun"]
+            row["reverse_ablation"], row["reverse_noun"], row["noun"]
         ),
         axis=1,
     )
+
+    # [TODO] Swap word order ablation
+    # [TODO] Dist-shifted ablation to test coherence / consistency: Replace alphabetical cipher mapping to a numeric mapping
+
+    os.makedirs(output_dir, exist_ok=True)
     wiki_nouns_df.to_json(
         os.path.join(output_dir, "contexts.jsonl"), orient="records", lines=True
     )

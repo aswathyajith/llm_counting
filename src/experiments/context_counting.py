@@ -76,6 +76,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional JSON/TOML OpenRouter config file (e.g., temperature/reasoning/extra/api_key).",
     )
+    parser.add_argument(
+        "--cipher_swap_rate",
+        type=float,
+        default=1.0,
+        help="Cipher swap rate for the experiment. Default is 1.0.",
+    )
 
     args = parser.parse_args()
     target_types = args.target_type
@@ -99,12 +105,16 @@ if __name__ == "__main__":
             )
 
     for target_type in target_types:
-        results_dir = os.path.join(args.results_dir, args.model_name, target_type)
+        results_dir = os.path.join(
+            args.results_dir, args.model_name, f"target_{target_type}"
+        )
         os.makedirs(results_dir, exist_ok=True)
-        responses_dir = os.path.join(args.responses_dir, args.model_name, target_type)
+        responses_dir = os.path.join(
+            args.responses_dir, args.model_name, f"target_{target_type}"
+        )
         os.makedirs(responses_dir, exist_ok=True)
         examples_file = os.path.join(
-            args.examples_dir, target_type, "example_contexts.jsonl"
+            args.examples_dir, f"target_{target_type}", "example_contexts.jsonl"
         )
 
         print(f"Running experiment for {target_type}...", flush=True)
@@ -153,7 +163,7 @@ if __name__ == "__main__":
             n_shot=args.n_shot,
             template_file=args.template_file,
             examples=examples,
-            examples_dir=os.path.join(args.examples_dir, target_type),
+            examples_dir=os.path.dirname(examples_file),
         )
 
         for index, row in dataset.iterrows():
@@ -163,10 +173,7 @@ if __name__ == "__main__":
                 if context_ablation == "none":
                     return f"{target_type}_context"
                 elif context_ablation == "cipher":
-                    if target_type == "cipher":
-                        return f"ablated_{context_ablation}_context"
-                    elif target_type == "noun":
-                        return f"ablated_{context_ablation}_context_tgt_noun"
+                    return f"cipher_ablation_rate_{args.cipher_swap_rate}_target_{target_type}"
                 return None
 
             context_col = get_context_col(target_type, args.context_ablation)
@@ -241,7 +248,7 @@ if __name__ == "__main__":
                 print(f"Error prompting model: {e}", flush=True)
 
             # save every 10 instances
-            if index % 5 == 0:
+            if ((index + 1) % 10 == 0) or (index == len(dataset) - 1):
                 print(f"Saving results to {results_file}...", flush=True)
                 results_df.to_json(results_file, orient="records", lines=True)
 
