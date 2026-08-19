@@ -1,0 +1,8 @@
+{
+  "base_url": "http://localhost:65000",
+  "model": "argo:gpt-5.2",
+  "temperature": 0,
+  "max_tokens": 32000,
+  "extra": { "reasoning_effort": "high" },
+  "prompt": "Count the number of times the word 'cat' appears in the following text: 'The cat in the hat sat on the mat. Cats love to play with toys. My little cat is named Whiskers.'."
+}
