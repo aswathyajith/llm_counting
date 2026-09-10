@@ -6,17 +6,33 @@ import pandas as pd
 import os
 import json
 
-from src.openrouter_calls import chat_completion, load_openrouter_config
+from src.openrouter_calls import (
+    chat_completion as openrouter_chat_completion,
+    load_openrouter_config,
+)
+from src.argo_calls import chat_completion as argo_chat_completion, load_argo_config
 from src.prompt_builder import PromptBuilder
+
+DEFAULT_MODEL_NAMES = {
+    "openrouter": "openai/gpt-5.2",
+    "argo": "argo:gpt-5.2",
+}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Context Counting Experiment")
     parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["openrouter", "argo"],
+        default="openrouter",
+        help="Which API backend to prompt the model through.",
+    )
+    parser.add_argument(
         "--model_name",
         type=str,
-        default="openai/gpt-5.2",
-        help="OpenRouter model to prompt with",
+        default=argparse.SUPPRESS,
+        help="Model to prompt with (id format depends on --backend). Overrides 'model' in --backend_config if both are given.",
     )
     parser.add_argument(
         "--template_file",
@@ -41,7 +57,7 @@ if __name__ == "__main__":
         "--context_ablation",
         type=str,
         default="none",
-        help="Whether to use ablated context. Options: 'cipher', 'none'",
+        help="Whether to use ablated context. Options: 'cipher', 'none', 'masked",
     )
     parser.add_argument(
         "--examples_dir",
@@ -71,10 +87,10 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
-        "--openrouter_config",
+        "--backend_config",
         type=str,
         default=None,
-        help="Optional JSON/TOML OpenRouter config file (e.g., temperature/reasoning/extra/api_key).",
+        help="Optional JSON/TOML config file for the selected --backend (e.g., temperature/extra/api_key; reasoning and base_url are openrouter/argo-specific).",
     )
     parser.add_argument(
         "--cipher_swap_rate",
@@ -82,13 +98,35 @@ if __name__ == "__main__":
         default=1.0,
         help="Cipher swap rate for the experiment. Default is 1.0.",
     )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=argparse.SUPPRESS,
+        help="Sampling temperature. Overrides 'temperature' in --openrouter_config if both are given.",
+    )
 
     args = parser.parse_args()
     target_types = args.target_type
 
-    openrouter_cfg = {}
-    if args.openrouter_config:
-        openrouter_cfg = load_openrouter_config(args.openrouter_config)
+    backend_cfg = {}
+    if args.backend_config:
+        if args.backend == "argo":
+            backend_cfg = load_argo_config(args.backend_config)
+        else:
+            backend_cfg = load_openrouter_config(args.backend_config)
+
+    model_name = (
+        getattr(args, "model_name", None)
+        or backend_cfg.get("model")
+        or DEFAULT_MODEL_NAMES[args.backend]
+    )
+
+    cli_temperature = getattr(args, "temperature", None)
+    temperature = (
+        cli_temperature
+        if cli_temperature is not None
+        else backend_cfg.get("temperature")
+    )
 
     if ("all" in target_types) and (args.context_ablation == "none"):
         target_types = ["noun", "nonce", "hash", "cipher"]
@@ -106,11 +144,11 @@ if __name__ == "__main__":
 
     for target_type in target_types:
         results_dir = os.path.join(
-            args.results_dir, args.model_name, f"target_{target_type}"
+            args.results_dir, model_name, f"target_{target_type}"
         )
         os.makedirs(results_dir, exist_ok=True)
         responses_dir = os.path.join(
-            args.responses_dir, args.model_name, f"target_{target_type}"
+            args.responses_dir, model_name, f"target_{target_type}"
         )
         os.makedirs(responses_dir, exist_ok=True)
         examples_file = os.path.join(
@@ -174,6 +212,8 @@ if __name__ == "__main__":
                     return f"{target_type}_context"
                 elif context_ablation == "cipher":
                     return f"cipher_ablation_rate_{args.cipher_swap_rate}_target_{target_type}"
+                elif context_ablation == "masked":
+                    return f"masked_context"
                 return None
 
             context_col = get_context_col(target_type, args.context_ablation)
@@ -194,27 +234,39 @@ if __name__ == "__main__":
             case1_space1_standalone1 = row["case1_space1_standalone1"]
 
             prompt = prompt_builder.build_prompt(text=text, target_string=target_string)
+
             if index == 0:
+                print("End-to-end example prompt:\n", flush=True)
                 print(prompt, flush=True)
 
-            # Prompt OpenRouter
+            print(f"Input context for {target_string}: {prompt}", flush=True)
+            # Prompt the model
             try:
-                cfg_model = openrouter_cfg.get("model")
-                cfg_temperature = openrouter_cfg.get("temperature")
-                cfg_max_tokens = openrouter_cfg.get("max_tokens")
-                cfg_reasoning = openrouter_cfg.get("reasoning")
-                cfg_extra = openrouter_cfg.get("extra")
-                cfg_api_key = openrouter_cfg.get("api_key")
-
-                response = chat_completion(
-                    model=cfg_model or args.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    api_key=cfg_api_key or os.environ.get("OPENROUTER_API_KEY"),
-                    temperature=cfg_temperature,
-                    max_tokens=cfg_max_tokens,
-                    reasoning=cfg_reasoning,
-                    extra=cfg_extra,
-                )
+                cfg_max_tokens = backend_cfg.get("max_tokens")
+                cfg_extra = backend_cfg.get("extra")
+                cfg_api_key = backend_cfg.get("api_key")
+                
+                if args.backend == "argo":
+                    response = argo_chat_completion(
+                        model=model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        base_url=backend_cfg.get("base_url"),
+                        api_key=cfg_api_key,
+                        temperature=temperature,
+                        max_tokens=cfg_max_tokens,
+                        reasoning_effort=backend_cfg.get("reasoning_effort"),
+                        extra=cfg_extra,
+                    )
+                else:
+                    response = openrouter_chat_completion(
+                        model=model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        api_key=cfg_api_key or os.environ.get("OPENROUTER_API_KEY"),
+                        temperature=temperature,
+                        max_tokens=cfg_max_tokens,
+                        reasoning=backend_cfg.get("reasoning"),
+                        extra=cfg_extra,
+                    )
 
                 # save response to file (append to file if it already exists)
                 # jsonl format
